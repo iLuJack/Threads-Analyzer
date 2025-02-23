@@ -1,16 +1,8 @@
+import { icons } from './icons.js';
+
 function displayStats() {
   chrome.storage.local.get(['threadsPosts'], function(result) {
-    console.log('Storage data:', result);  // Log entire result
-    console.log('Posts data:', result.threadsPosts);  // Log just the posts
-    
     const posts = result.threadsPosts || {};
-    console.log('Number of posts:', Object.keys(posts).length);  // Log post count
-    
-    // Log a sample post if available
-    if (Object.keys(posts).length > 0) {
-      console.log('Sample post:', Object.values(posts)[0]);
-    }
-
     const postsContainer = document.getElementById('posts');
     const summary = document.getElementById('summary');
 
@@ -26,19 +18,19 @@ function displayStats() {
       <div class="summary-stats">
         <div class="stat-box">
           <h3>Total Posts</h3>
-          <div>${totalPosts}</div>
+          <div class="value">${totalPosts}</div>
         </div>
         <div class="stat-box">
           <h3>Total Likes</h3>
-          <div>${totalLikes.toLocaleString()}</div>
+          <div class="value">${formatNumber(totalLikes)}</div>
         </div>
         <div class="stat-box">
           <h3>Total Replies</h3>
-          <div>${totalReplies.toLocaleString()}</div>
+          <div class="value">${formatNumber(totalReplies)}</div>
         </div>
         <div class="stat-box">
           <h3>Total Reposts</h3>
-          <div>${totalReposts.toLocaleString()}</div>
+          <div class="value">${formatNumber(totalReposts)}</div>
         </div>
       </div>
       <div class="last-updated">Last Updated: ${new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}</div>
@@ -47,7 +39,6 @@ function displayStats() {
     // Display individual posts
     postsContainer.innerHTML = '';
     
-    // Sort posts by timestamp (newest first)
     const sortedPosts = Object.entries(posts)
       .sort(([timestampA], [timestampB]) => new Date(timestampB) - new Date(timestampA))
       .map(([timestamp, post]) => post);
@@ -56,7 +47,6 @@ function displayStats() {
       const postElement = document.createElement('div');
       postElement.className = 'post-card';
       
-      // Format the timestamp to local time
       const formattedTime = new Date(post.timestamp).toLocaleString('zh-TW', {
         timeZone: 'Asia/Taipei',
         year: 'numeric',
@@ -74,15 +64,25 @@ function displayStats() {
         </div>
         <div class="post-content">${post.content}</div>
         <div class="post-stats">
-          <div class="stat-item">Likes: ${(post.likes || 0).toLocaleString()}</div>
-          <div class="stat-item">Replies: ${(post.replies || 0).toLocaleString()}</div>
-          <div class="stat-item">Reposts: ${(post.reposts || 0).toLocaleString()}</div>
-          <div class="stat-item">Shares: ${(post.shares || 0).toLocaleString()}</div>
+          <div class="stat-item">${icons.like} ${formatNumber(post.likes || 0)}</div>
+          <div class="stat-item">${icons.reply} ${formatNumber(post.replies || 0)}</div>
+          <div class="stat-item">${icons.repost} ${formatNumber(post.reposts || 0)}</div>
+          <div class="stat-item">${icons.share} ${formatNumber(post.shares || 0)}</div>
         </div>
       `;
       postsContainer.appendChild(postElement);
     });
   });
+}
+
+function formatNumber(num) {
+  if (num >= 1000000) {
+    return (num / 1000000).toFixed(1) + 'M';
+  }
+  if (num >= 1000) {
+    return (num / 1000).toFixed(1) + 'K';
+  }
+  return num.toLocaleString();
 }
 
 // Load stats when page opens

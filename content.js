@@ -46,9 +46,6 @@ const observer = new MutationObserver((mutations) => {
       if (node.nodeType === Node.ELEMENT_NODE) {
         const posts = node.querySelectorAll('[data-pressable-container="true"]');
         posts.forEach((post) => {
-            if(allPostElements.has(post)) {
-                return;
-            }
             allPostElements.add(post);
         });
       }
@@ -75,7 +72,7 @@ async function collectAndScroll() {
     // Condition 2: We're close to the bottom (within 100px margin)
     scrollPosition >= currentHeight - 100 
   ) {
-    console.log('- Posts collected:', allPostElements.size);
+    console.log('Posts collected:', allPostElements.size);
     
     isScrolling = false;
     await processAllCollectedPosts();
@@ -170,23 +167,30 @@ function getStatCount(postElement, type) {
     } else {
       svgElement = postElement.querySelector(`svg[aria-label="${type}"][role="img"]`);
     }
-    
-    console.log('svgElement', svgElement);
     if (!svgElement) return '0';
-
-    // Walk up the DOM tree to find the correct container structure
     const buttonContainer = svgElement.parentElement; // Get immediate parent
-    console.log('buttonContainer', buttonContainer);
-    
     const countSpan = buttonContainer.querySelector('span.x17qophe.x10l6tqk.x13vifvy');
-    console.log('countSpan', countSpan);
-    const count = countSpan?.textContent.trim().match(/\d+/);
-
-    return count ? count[0] : '0';
+    const count = countSpan?.textContent;
+    return parseAbbreviatedNumber(count || '0');
   } catch (error) {
     console.error(`Error getting ${type} count:`, error);
     return '0';
   }
+}
+
+// Add this helper function
+function parseAbbreviatedNumber(numStr) {
+    if (!numStr) return '0';
+    
+    const number = numStr.toLowerCase().trim();
+    
+    if (number.endsWith('k')) {
+        return String(parseFloat(number.replace('k', '')) * 1000);
+    } else if (number.endsWith('m')) {
+        return String(parseFloat(number.replace('m', '')) * 1000000);
+    }
+    
+    return number;
 }
 
 // Replace savePostStats with a new function to save all data at once
