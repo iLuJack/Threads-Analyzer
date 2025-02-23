@@ -74,10 +74,10 @@ function displayStats() {
         </div>
         <div class="post-content">${post.content}</div>
         <div class="post-stats">
-          <div class="stat-item">👍 ${(post.likes || 0).toLocaleString()}</div>
-          <div class="stat-item">💬 ${(post.replies || 0).toLocaleString()}</div>
-          <div class="stat-item">🔄 ${(post.reposts || 0).toLocaleString()}</div>
-          <div class="stat-item">📤 ${(post.shares || 0).toLocaleString()}</div>
+          <div class="stat-item">Likes: ${(post.likes || 0).toLocaleString()}</div>
+          <div class="stat-item">Replies: ${(post.replies || 0).toLocaleString()}</div>
+          <div class="stat-item">Reposts: ${(post.reposts || 0).toLocaleString()}</div>
+          <div class="stat-item">Shares: ${(post.shares || 0).toLocaleString()}</div>
         </div>
       `;
       postsContainer.appendChild(postElement);

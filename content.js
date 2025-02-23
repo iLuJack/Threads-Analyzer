@@ -1,9 +1,10 @@
 let isAnalyzing = false;
 let processedPosts = new Set();
 let isScrolling = false;
-const MAX_NO_NEW_POSTS = 3; // Stop if no new posts after 3 attempts
-const SCROLL_INTERVAL = 1500; // 2 seconds between scrolls
-const SCROLL_AMOUNT = 1600; // Pixels to scroll each time
+const SCROLL_INTERVAL = 1000; // 2 seconds between scrolls
+const SCROLL_AMOUNT = 1200; // Pixels to scroll each time
+let processedData = {}; // Add this at the top with other global variables
+let allPostElements = new Set(); // New Set to store all post DOM elements
 
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -11,19 +12,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     isAnalyzing = true;
     isScrolling = true;
     processedPosts.clear();
+    allPostElements.clear(); // Clear the set when starting
     
-    // Process initial posts first
+    // Only collect initial posts, don't process yet
     const initialPosts = document.querySelectorAll('[data-pressable-container="true"]');    
     initialPosts.forEach((post) => {
-      const hasContent = post.querySelector('.x1a6qonq.x6ikm8r.x10wlt62.xj0a0fe.x126k92a.x6prxxf.x7r5mf7');
-      const hasAuthor = post.querySelector('span.x1lliihq.x193iq5w.x6ikm8r.x10wlt62.xlyipyv.xuxw1ft');
-      
-      if (hasContent && hasAuthor) {
-        processPost(post);
-      }
+        allPostElements.add(post);
     });
 
-    // Start observing after processing initial posts
+    // Start observing to collect new posts
     observer.observe(document.body, {
       childList: true,
       subtree: true,
@@ -31,9 +28,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       attributes: false
     });
 
-    // Wait a moment before starting auto-scroll to ensure initial posts are saved
     setTimeout(() => {
-      processAndScroll();
+      collectAndScroll();
     }, 1000);
     
     sendResponse({ status: 'started' });
@@ -41,36 +37,73 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
-// Observer to detect new posts as user scrolls
+// Modified observer to only collect posts
 const observer = new MutationObserver((mutations) => {
   if (!isAnalyzing) return;
   
   mutations.forEach((mutation) => {
     mutation.addedNodes.forEach((node) => {
       if (node.nodeType === Node.ELEMENT_NODE) {
-        // Also check for posts within the node
         const posts = node.querySelectorAll('[data-pressable-container="true"]');
         posts.forEach((post) => {
-          // Verify the post has the required content structure
-          const hasContent = post.querySelector('.x1a6qonq.x6ikm8r.x10wlt62.xj0a0fe.x126k92a.x6prxxf.x7r5mf7');
-          const hasAuthor = post.querySelector('span.x1lliihq.x193iq5w.x6ikm8r.x10wlt62.xlyipyv.xuxw1ft');
-          
-          if (hasContent && hasAuthor) {
-            processPost(post);
-          }
+            if(allPostElements.has(post)) {
+                return;
+            }
+            allPostElements.add(post);
         });
       }
     });
   });
 });
 
-// Start observing with the correct configuration
-observer.observe(document.body, {
-  childList: true,
-  subtree: true,
-  characterData: false,
-  attributes: false
-});
+// New function to only scroll until we reach the bottom
+async function collectAndScroll() {
+  if (!isScrolling) return;
+
+  const previousHeight = document.body.scrollHeight;
+  const scrollPosition = window.scrollY + window.innerHeight;
+  
+  window.scrollBy(0, SCROLL_AMOUNT);
+  await new Promise(resolve => setTimeout(resolve, SCROLL_INTERVAL));
+  
+  const currentHeight = document.body.scrollHeight;
+
+  // Enhanced bottom detection using multiple conditions
+  if (
+    // Condition 1: Page height hasn't increased
+    currentHeight === previousHeight &&
+    // Condition 2: We're close to the bottom (within 100px margin)
+    scrollPosition >= currentHeight - 100 
+  ) {
+    console.log('- Posts collected:', allPostElements.size);
+    
+    isScrolling = false;
+    await processAllCollectedPosts();
+    return;
+  }
+
+  await collectAndScroll();
+}
+
+// New function to process all collected posts
+async function processAllCollectedPosts() {  
+  for (const post of allPostElements) {
+    try {
+      const hasContent = post.querySelector('.x1a6qonq.x6ikm8r.x10wlt62.xj0a0fe.x126k92a.x6prxxf.x7r5mf7');
+      const hasAuthor = post.querySelector('span.x1lliihq.x193iq5w.x6ikm8r.x10wlt62.xlyipyv.xuxw1ft');
+      
+      if (hasContent && hasAuthor) {
+        await processPost(post);
+      }
+    } catch (error) {
+      console.error('Error processing post:', error);
+    }
+  }
+
+  console.log('All posts processed, saving to storage...');
+  await saveAllPostStats();
+  allPostElements.clear(); // Clear the set after processing
+}
 
 async function processPost(postElement) {
   const content = getContent(postElement);
@@ -78,7 +111,6 @@ async function processPost(postElement) {
   const postIdentifier = `${content}_${timestamp}`;
   
   if (processedPosts.has(postIdentifier)) {
-    console.log('Post already processed:', postIdentifier);
     return;
   }
   
@@ -94,8 +126,8 @@ async function processPost(postElement) {
     shares: getStatCount(postElement, 'Share')
   };
 
-  // Wait for storage operation to complete
-  await savePostStats(stats);
+  // Store in memory instead of saving to storage immediately
+  processedData[timestamp] = stats;
 }
 
 function getContent(postElement) {
@@ -130,85 +162,51 @@ function getTimestamp(postElement) {
 }
 
 function getStatCount(postElement, type) {
-  // First find the svg with aria-label
-  const svgElement = postElement.querySelector(`svg[aria-label="${type}"]`);
-  if (!svgElement) return '0';
-  
-  // Navigate up to find the parent container and then find the count span
-  const container = svgElement.closest('.x6s0dn4.x17zd0t2.x78zum5.xl56j7k');
-  if (!container) return '0';
-
-  const countSpan = container.querySelector('span.x17qophe.x10l6tqk.x13vifvy');
-  const count = countSpan?.textContent.match(/\d+/);
-  
-  return count ? count[0] : '0';
-}
-
-function savePostStats(stats) {
-  return new Promise((resolve, reject) => {
-    chrome.storage.local.get(['threadsPosts'], function(result) {
-      const posts = result.threadsPosts || {};
-      const postIdentifier = stats.timestamp;
-      
-      posts[postIdentifier] = stats;
-      
-      chrome.storage.local.set({ threadsPosts: posts }, () => {
-        if (chrome.runtime.lastError) {
-          console.error('Error saving to storage:', chrome.runtime.lastError);
-          reject(chrome.runtime.lastError);
-        } else {
-          console.log('Successfully saved post to storage');
-          resolve();
-        }
-      });
-    });
-  });
-}
-
-// Process initial posts on page load
-document.querySelectorAll('article[role="article"]').forEach(processPost); 
-
-async function processAndScroll() {
-  if (!isScrolling) return;
-
-  const currentPosts = document.querySelectorAll('[data-pressable-container="true"]');
-  console.log('Found posts to process:', currentPosts.length);
-  
-  // Process posts sequentially
-  for (const post of currentPosts) {
-    try {
-      const hasContent = post.querySelector('.x1a6qonq.x6ikm8r.x10wlt62.xj0a0fe.x126k92a.x6prxxf.x7r5mf7');
-      const hasAuthor = post.querySelector('span.x1lliihq.x193iq5w.x6ikm8r.x10wlt62.xlyipyv.xuxw1ft');
-      
-      if (hasContent && hasAuthor) {
-        // Wait for each post to be processed and saved
-        await processPost(post);
-        console.log('Post processed and saved successfully');
-      }
-    } catch (error) {
-      console.error('Error processing post:', error);
+  try {
+    // Handle Like/Unlike case
+    let svgElement;
+    if (type === 'Like') {
+      svgElement = postElement.querySelector('svg[aria-label="Like"][role="img"], svg[aria-label="Unlike"][role="img"]');
+    } else {
+      svgElement = postElement.querySelector(`svg[aria-label="${type}"][role="img"]`);
     }
-  }
-
-  // After all posts are processed, scroll
-  window.scrollBy(0, SCROLL_AMOUNT);
-
-  // Wait for new content to load
-  setTimeout(() => {
-    const currentHeight = document.body.scrollHeight;
     
-    if (window.innerHeight + window.scrollY >= currentHeight) {
-      isScrolling = false;
-      console.log('Reached the end of the feed');
-      return;
-    }
+    console.log('svgElement', svgElement);
+    if (!svgElement) return '0';
 
-    // Continue with next batch
-    processAndScroll();
-  }, SCROLL_INTERVAL);
+    // Walk up the DOM tree to find the correct container structure
+    const buttonContainer = svgElement.parentElement; // Get immediate parent
+    console.log('buttonContainer', buttonContainer);
+    
+    const countSpan = buttonContainer.querySelector('span.x17qophe.x10l6tqk.x13vifvy');
+    console.log('countSpan', countSpan);
+    const count = countSpan?.textContent.trim().match(/\d+/);
+
+    return count ? count[0] : '0';
+  } catch (error) {
+    console.error(`Error getting ${type} count:`, error);
+    return '0';
+  }
 }
 
-// Add a function to stop scrolling if needed
-function stopScrolling() {
-  isScrolling = false;
+// Replace savePostStats with a new function to save all data at once
+async function saveAllPostStats() {  
+  try {
+    // Get current posts atomically
+    const result = await chrome.storage.local.get(['threadsPosts']);
+    const existingPosts = result.threadsPosts || {};
+    
+    // Merge existing posts with new posts
+    const updatedPosts = { ...existingPosts, ...processedData };
+    
+    // Save all posts at once
+    await chrome.storage.local.set({ threadsPosts: updatedPosts });
+    
+    // Clear the processed data after successful save
+    processedData = {};
+  } catch (error) {
+    console.error('Error saving to storage:', error);
+    throw error;
+  }
 }
+
