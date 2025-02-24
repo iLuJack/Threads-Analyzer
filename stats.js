@@ -33,8 +33,14 @@ function displayStats() {
           <div class="value">${formatNumber(totalReposts)}</div>
         </div>
       </div>
+      <div class="actions">
+        <button id="downloadBtn" class="download-btn">Download CSV</button>
+      </div>
       <div class="last-updated">Last Updated: ${new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}</div>
     `;
+
+    // Add event listener after creating the button
+    document.getElementById('downloadBtn').addEventListener('click', downloadCSV);
 
     // Display individual posts
     postsContainer.innerHTML = '';
@@ -83,6 +89,44 @@ function formatNumber(num) {
     return (num / 1000).toFixed(1) + 'K';
   }
   return num.toLocaleString();
+}
+
+// Add this function to handle CSV creation and download
+function downloadCSV() {
+  chrome.storage.local.get(['threadsPosts'], function(result) {
+    const posts = result.threadsPosts || {};
+    
+    // Create CSV headers
+    const headers = ['Timestamp', 'Author', 'Content', 'Likes', 'Replies', 'Reposts', 'Shares'];
+    
+    // Convert posts data to CSV rows
+    const rows = Object.values(posts).map(post => [
+      post.timestamp,
+      post.author,
+      `"${post.content.replace(/"/g, '""')}"`, // Escape quotes in content
+      post.likes,
+      post.replies,
+      post.reposts,
+      post.shares
+    ]);
+    
+    // Combine headers and rows
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.join(','))
+    ].join('\n');
+    
+    // Create download link
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `threads_stats_${new Date().toISOString().split('T')[0]}.csv`;
+    
+    // Trigger download
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
 }
 
 // Load stats when page opens
