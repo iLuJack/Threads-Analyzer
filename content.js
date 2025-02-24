@@ -1,26 +1,21 @@
 let isAnalyzing = false;
 let processedPosts = new Set();
 let isScrolling = false;
-const SCROLL_INTERVAL = 1000; // 2 seconds between scrolls
-const SCROLL_AMOUNT = 1200; // Pixels to scroll each time
-let processedData = {}; // Add this at the top with other global variables
-let allPostElements = new Set(); // New Set to store all post DOM elements
+const SCROLL_INTERVAL = 1000; 
+const SCROLL_AMOUNT = 1200; 
+let processedData = {}; 
+let allPostElements = new Set(); 
 
-// Listen for messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'startAnalysis' && window.location.href.includes('threads.net')) {
     isAnalyzing = true;
     isScrolling = true;
     processedPosts.clear();
-    allPostElements.clear(); // Clear the set when starting
+    allPostElements.clear();
     
-    // Only collect initial posts, don't process yet
     const initialPosts = document.querySelectorAll('[data-pressable-container="true"]');    
-    initialPosts.forEach((post) => {
-        allPostElements.add(post);
-    });
+    initialPosts.forEach(post => allPostElements.add(post));
 
-    // Start observing to collect new posts
     observer.observe(document.body, {
       childList: true,
       subtree: true,
@@ -28,26 +23,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       attributes: false
     });
 
-    setTimeout(() => {
-      collectAndScroll();
-    }, 1000);
-    
+    setTimeout(collectAndScroll, 1000);
     sendResponse({ status: 'started' });
     return true;
   }
 });
 
 // Modified observer to only collect posts
-const observer = new MutationObserver((mutations) => {
+const observer = new MutationObserver(mutations => {
   if (!isAnalyzing) return;
   
-  mutations.forEach((mutation) => {
-    mutation.addedNodes.forEach((node) => {
+  mutations.forEach(mutation => {
+    mutation.addedNodes.forEach(node => {
       if (node.nodeType === Node.ELEMENT_NODE) {
         const posts = node.querySelectorAll('[data-pressable-container="true"]');
-        posts.forEach((post) => {
-            allPostElements.add(post);
-        });
+        posts.forEach(post => allPostElements.add(post));
       }
     });
   });
@@ -65,15 +55,7 @@ async function collectAndScroll() {
   
   const currentHeight = document.body.scrollHeight;
 
-  // Enhanced bottom detection using multiple conditions
-  if (
-    // Condition 1: Page height hasn't increased
-    currentHeight === previousHeight &&
-    // Condition 2: We're close to the bottom (within 100px margin)
-    scrollPosition >= currentHeight - 100 
-  ) {
-    console.log('Posts collected:', allPostElements.size);
-    
+  if (currentHeight === previousHeight && scrollPosition >= currentHeight - 100) {
     isScrolling = false;
     await processAllCollectedPosts();
     return;
@@ -99,6 +81,14 @@ async function processAllCollectedPosts() {
 
   console.log('All posts processed, saving to storage...');
   await saveAllPostStats();
+  
+  // Send completion message back to popup
+  chrome.runtime.sendMessage({
+    action: 'analysisComplete',
+    message: 'Posts processed successfully!'
+  });
+  
+  isAnalyzing = false;
   allPostElements.clear(); // Clear the set after processing
 }
 
@@ -160,20 +150,16 @@ function getTimestamp(postElement) {
 
 function getStatCount(postElement, type) {
   try {
-    // Handle Like/Unlike case
-    let svgElement;
-    if (type === 'Like') {
-      svgElement = postElement.querySelector('svg[aria-label="Like"][role="img"], svg[aria-label="Unlike"][role="img"]');
-    } else {
-      svgElement = postElement.querySelector(`svg[aria-label="${type}"][role="img"]`);
-    }
+    let svgElement = type === 'Like' 
+      ? postElement.querySelector('svg[aria-label="Like"][role="img"], svg[aria-label="Unlike"][role="img"]')
+      : postElement.querySelector(`svg[aria-label="${type}"][role="img"]`);
+      
     if (!svgElement) return '0';
-    const buttonContainer = svgElement.parentElement; // Get immediate parent
+    
+    const buttonContainer = svgElement.parentElement;
     const countSpan = buttonContainer.querySelector('span.x17qophe.x10l6tqk.x13vifvy');
-    const count = countSpan?.textContent;
-    return parseAbbreviatedNumber(count || '0');
+    return parseAbbreviatedNumber(countSpan?.textContent || '0');
   } catch (error) {
-    console.error(`Error getting ${type} count:`, error);
     return '0';
   }
 }
