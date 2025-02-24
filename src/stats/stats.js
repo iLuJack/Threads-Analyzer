@@ -1,4 +1,4 @@
-import { icons } from './icons.js';
+import { icons } from '../constants/icons.js';
 
 function displayStats() {
   chrome.storage.local.get(['threadsPosts'], function(result) {

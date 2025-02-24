@@ -1,5 +1,5 @@
 document.getElementById('viewStats').addEventListener('click', () => {
-  chrome.tabs.create({ url: 'stats.html' });
+  chrome.tabs.create({ url: 'src/stats/stats.html' });
 });
 
 document.getElementById('startAnalysis').addEventListener('click', async () => {

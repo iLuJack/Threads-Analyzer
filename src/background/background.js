@@ -1,6 +1,4 @@
-// Listen for installation
 chrome.runtime.onInstalled.addListener(() => {
-  // Initialize storage with empty posts object
   chrome.storage.local.set({ threadsPosts: {} });
 });
 
